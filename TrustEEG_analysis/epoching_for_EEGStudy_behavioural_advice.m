@@ -1,0 +1,74 @@
+icar_renamed_filedir = 'C:\Users\jasminet\Desktop\TrustEEG\ICAr_Renamed';
+epochedfiledir = 'C:\Users\jasminet\Desktop\TrustEEG\Epoched_behavioural';
+
+trialmatrix_filedir = 'C:\Github\Trust_experiment\experiments\TrustEEG\participants\';
+saved_trialmatrix_filedir = 'C:\Users\jasminet\Desktop\TrustEEG\trialmatrix_EEG_feedback\';
+
+load("participants.mat");
+
+epoch_info{1,1} = { '71'  '72'  '73'  '74' };
+epoch_info{1,2} = '_advice_epochs';
+epoch_info{2,1} = { '61'  '62'  '63'  '64' };
+epoch_info{2,2} = '_advisor_epochs';
+epoch_info{3,1} = { '4' };
+epoch_info{3,2} = '_stimuli_epochs';
+epoch_info{4,1} = { '8' };
+epoch_info{4,2} = '_feedback_epochs';
+
+for part_i = 1:length(Participants)
+
+    trialmatrix_file = [trialmatrix_filedir Participants{part_i,4} '\answers.csv'];
+
+    behaviour_data = readtable(trialmatrix_file);
+    trialmatrix = table2struct(behaviour_data);
+
+    EEG_icar_renamed = pop_loadset('filename',['Participant' Participants{part_i} '_icar_renamed.set'],'filepath',icar_renamed_filedir);
+
+    for trigger_i = 1:size(epoch_info,1)
+
+        EEG_epochs = pop_epoch( EEG_icar_renamed, epoch_info{trigger_i,1}, [-0.75  1], 'newname', 'BDF file pruned with ICA epochs', 'epochinfo', 'yes');
+        EEG_epochs = pop_saveset(EEG_epochs, 'filename',['Participant' Participants{part_i,3} '.set'],'filepath',epochedfiledir);
+        EEG_epochs = pop_rmbase( EEG_epochs, [-100 0] ,[]);
+        EEG_epochs = pop_saveset(EEG_epochs, 'filename',['Participant' Participants{part_i,3} epoch_info{trigger_i,2} '_br.set'],'filepath',epochedfiledir);
+        EEG_epochs = pop_eegthresh(EEG_epochs,1,[1:64],-100,100,0,1,0,0);
+        data_loss(trigger_i) = length(find(EEG_epochs.reject.rejthresh == 1)); %records data loss
+        EEG_epochs = pop_saveset(EEG_epochs, 'filename',['Participant' Participants{part_i,3} epoch_info{trigger_i,2} '_br_p.set'],'filepath',epochedfiledir);
+
+        EEG_field = ['EEGdata' epoch_info{trigger_i,2}];
+        time_field = ['EEGtimes' epoch_info{trigger_i,2}];
+        noise_field = ['EEG_noisy' epoch_info{trigger_i,2}];
+        if trigger_i == 4
+            for events = 1:length(trialmatrix)
+                if trialmatrix(events).Feedback == 1
+                    trialmatrix(events).(EEG_field) = EEG_epochs.data(:,:,events);
+                    trialmatrix(events).(time_field) = EEG_epochs.times;
+                    trialmatrix(events).(noise_field) = EEG_epochs.reject.rejthresh(events);
+                end
+            end
+
+        else
+
+            for events = 1:length(trialmatrix)
+                trialmatrix(events).(EEG_field) = EEG_epochs.data(:,:,events);
+                trialmatrix(events).(time_field) = EEG_epochs.times;
+                trialmatrix(events).(noise_field) = EEG_epochs.reject.rejthresh(events);
+            end
+
+        end
+
+        EEG_epochs = [];
+
+    end
+
+
+    %save trialmatrix
+    save([saved_trialmatrix_filedir 'Participant' num2str(Participants{part_i,3}) '_trialmatrix_EEG.mat'], 'trialmatrix', '-v7.3');
+    EEG_icar_renamed = [];
+    Participants{part_i,5} = data_loss;
+
+end
+
+
+
+save([saved_trialmatrix_filedir 'Participants_info_peaks_data_loss.mat'], 'Participants');
+
